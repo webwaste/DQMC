@@ -14,7 +14,7 @@ using namespace Eigen;
 //progress bar for making the program fancy
 void progressbar(int i, int N, std::string prefix){
     int barWidth = 20;
-    std::cout<<prefix<<"\t";
+    std::cout<<prefix<<" ";
     std::cout << "[";
     int pos = round((barWidth * (float)(i + 1.0)) / (float) N);
     for (int i = 0; i < barWidth; ++i) {
@@ -101,14 +101,12 @@ std::tuple<MatrixXd, MatrixXd, MatrixXd, MatrixXd, MatrixXd, MatrixXd> K(int Nx,
 }
 
 Eigen::VectorXd V(int l,  double sigma, Eigen::MatrixXd s, double lamda, double U, double mu, double  Dtau ) {
-    if(U>=0){
+    if(U>0){
         Eigen::VectorXd lamda_sigma_sl_by_Dtau = (1.0/Dtau)*lamda*sigma*s.row(l);
         return lamda_sigma_sl_by_Dtau  - (mu - U/2.0)*Eigen::VectorXd::Ones(s.row(l).size());
     }
-    else if(U<0){
-        Eigen::VectorXd lamda_sl_by_Dtau = (1.0/Dtau)*lamda*s.row(l);
-        return lamda_sl_by_Dtau  - (mu - U/2.0)*Eigen::VectorXd::Ones(s.row(l).size());
-    }
+    Eigen::VectorXd lamda_sl_by_Dtau = (1.0/Dtau)*lamda*s.row(l);
+    return lamda_sl_by_Dtau  - (mu - U/2.0)*Eigen::VectorXd::Ones(s.row(l).size());
 }
 
 Eigen::MatrixXd B(int l, double sigma,Eigen::MatrixXd s,double  lamda,double t,double  U, double mu,double  Dtau, std::vector<int> dim ) {
@@ -138,7 +136,7 @@ Eigen::MatrixXd B(int l, double sigma,Eigen::MatrixXd s,double  lamda,double t,d
     double factor = 1.0e0;
     //if(U<0){
     //    for (int i=0; i<N; i++){
-    //        factor = factor * std::exp(Dtau*U/4.0 + s(l,i)*lamda/2.0); 
+    //        factor = factor * std::exp(-Dtau*U/4.0 - s(l,i)*lamda/2.0); 
     //    }
     //}
 
@@ -157,7 +155,7 @@ Eigen::MatrixXd g( int l, double sigma, int M, Eigen::MatrixXd s, double lamda, 
         //Determine the value of l
         int ll = (l + i)%M;
         Usigma = B(ll, sigma, s, lamda, t,  U, mu, Dtau, dim ) * Usigma;
-        int M0 = 8;
+        int M0 = 1;
         if((i+1)%M0 == 0){
             //Decomposing
     		Eigen::HouseholderQR<Eigen::MatrixXd> qr(Usigma*Dsigma);
@@ -205,7 +203,7 @@ double filling(int M, Eigen::MatrixXd s, double lamda, double t, double U, doubl
     double gsum= 0.0;
     int N = dim[0]*dim[1]*dim[2];
     for (int l=0; l<M; l++){ 
-        auto Glup = g(l,1.0e0 , M, s, lamda, t,  U, mu, Dtau, dim);
+        auto Glup = g(l, 1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
         auto Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
         gsum += (Glup + Gldn).trace();
     }
@@ -229,9 +227,10 @@ double xx_local_moment(int M, Eigen::MatrixXd s, double lamda, double t, double 
 double pair_corr_func(int M, Eigen::MatrixXd s, double lamda, double t, double U, double mu, double Dtau, std::vector<int> dim){
     int N = dim[0]*dim[1]*dim[2];
     double gsum = 0; 
+    Eigen::MatrixXd delta = Eigen::MatrixXd::Identity(N,N);
     for(int l = 0; l<M; l++){
-        Eigen::ArrayXXd Glup = g(l,1.0e0 , M, s, lamda, t,  U, mu, Dtau, dim);
-        Eigen::ArrayXXd Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
+        Eigen::ArrayXXd Glup = /*delta*/ - g(l,1.0e0 , M, s, lamda, t,  U, mu, Dtau, dim);
+        Eigen::ArrayXXd Gldn = /*delta*/ - g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
 
         gsum += (Glup*Gldn).sum();
     }
@@ -241,6 +240,7 @@ double pair_corr_func(int M, Eigen::MatrixXd s, double lamda, double t, double U
 double pauli_spin_succept(int M, Eigen::MatrixXd s, double lamda, double t, double U, double mu, double Dtau, std::vector<int> dim){
     int N = dim[0]*dim[1]*dim[2];
     double gsum = 0; 
+
     for(int l = 0; l<M; l++){
         Eigen::MatrixXd Glup = g(l,1.0e0 , M, s, lamda, t,  U, mu, Dtau, dim);
         Eigen::MatrixXd Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
@@ -250,10 +250,111 @@ double pauli_spin_succept(int M, Eigen::MatrixXd s, double lamda, double t, doub
     return Dtau*gsum/((float) N);
 }
 
+double quick_run(int M, Eigen::MatrixXd s, double lamda, double t, double U, double mu, double Dtau, std::vector<int> dim){
+    int MCsteps = 500;
+    int Eqsteps = 200;
+    int N = dim[0]*dim[1]*dim[2];
+    double filling_avg = 0;
+    double filling_var = 0;
+    Eigen::MatrixXd delta = Eigen::MatrixXd::Identity(N,N);
+
+    for(int n=0; n<MCsteps; n++){
+        for(int l=0; l<M; l++){
+            auto Glup = g(l, 1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
+            auto Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
+            for(int i=0; i<N; i++){
+                auto Gliiup = Glup(i,i);
+                double Rup = 1.0 + (1.0 - Gliiup )*(std::exp(-2.0*lamda*s(l,i)) - 1.0);
+                double Rdn = Rup;
+                if(U>0){
+                    auto Gliidn = Gldn(i,i);
+                    Rdn = 1.0 + (1.0 - Gliidn )*(std::exp(2.0*lamda*s(l,i)) - 1.0);
+                }
+                double r = Rup*Rdn; 
+                double prob = r*std::exp(2.0*lamda*s(l,i))/(1.0e0 + r*std::exp(2.0*lamda*s(l,i)));
+                if(U>0){
+                    prob = r/(1.0e0 + r);
+                }
+                double randnum = random_number(); //Generating a random number between 0 and 1
+                if(randnum < prob ){
+                    //Accepting the spin flip
+                    s(l,i) = -s(l,i);
+                    //updating the green's function 
+                    auto glup = Glup; 
+                    auto gldn = Gldn; 
+                    double gammalupi = std::exp(-2.0*lamda*s(l,i)) - 1.0;
+
+                    double gammaldni = gammalupi; 
+                    if(U<0){
+                        gammaldni = std::exp( 2.0*lamda*s(l,i)) - 1.0;
+                    }
+                    for(int j = 0; j< N; j++){
+                        for (int k = 0; k< N; k++){
+                            Glup(j,k) = glup(j,k) - (delta(j,i) - glup(j,i))*gammalupi*glup(i,k)/(1.0e0 + (1.0e0 - glup(i,i))*gammalupi) ;
+                            Gldn(j,k) = gldn(j,k) - (delta(j,i) - gldn(j,i))*gammaldni*gldn(i,k)/(1.0e0 + (1.0e0 - gldn(i,i))*gammalupi) ;
+                        }
+                    }
+                }
+            }
+        }
+        if (n > Eqsteps){
+            double fill  = filling(M, s, lamda, t, U, mu, Dtau, dim);
+            filling_avg += fill;
+            filling_var += fill*fill;
+        }
+    }
+    return filling_avg/((float) MCsteps - Eqsteps);
+}
+double chemical_potential(double given_filling, int M, Eigen::MatrixXd s, double lamda, double t, double U, double Dtau, std::vector<int> dim){
+    double mu1 = -16; 
+    double mu2 = -3; 
+    double tolerance = 0.005;
+
+    double diff_filling_at_mu1 = quick_run(M, s,lamda, t, U,  mu1,  Dtau, dim) - given_filling;
+    double diff_filling_at_mu2 = quick_run(M, s,lamda, t, U,  mu2,  Dtau, dim) - given_filling;
+    //False Position Method:
+    //double mu  = (mu1*diff_filling_at_mu2 - mu2*diff_filling_at_mu1)/(mu2 - mu1);
+    //double diff_filling_at_false_point = quick_run(M, s,lamda, t, U,  mu,  Dtau, dim) - given_filling;
+    //
+
+    //if(diff_filling_at_mu1 * diff_filling_at_mu2 > 0){
+    //    return std::numeric_limits<double>::quiet_NaN();
+    //}
+    //else{
+    //    
+    //    while(std::abs(diff_filling_at_false_point) > tolerance){
+    //        mu = (mu1 + mu2)/2.0e0;
+    //        diff_filling_at_false_point = quick_run(M, s,lamda, t, U,  mu,  Dtau, dim) - given_filling;
+    //        if(diff_filling_at_false_point*diff_filling_at_mu1 < 0){
+    //            mu2 = mu;
+    //        }
+    //        else if(diff_filling_at_false_point*diff_filling_at_mu2 < 0){
+    //            mu1 = mu;
+    //        }
+    //        std::cout<<"mu: "<<dtos(mu,2,7)<< " \t filling: "<< dtos(diff_filling_at_false_point + given_filling, 2,3)<<std::endl;
+    //    }
+    //}
+    //Secant Method: 
+    double mu = mu2;
+    double diff_filling_at_mu = quick_run(M, s,lamda, t, U,  mu,  Dtau, dim) - given_filling;
+    int count=0;
+    while(std::abs(diff_filling_at_mu) > tolerance){
+        mu2 = mu;
+        diff_filling_at_mu2 = diff_filling_at_mu;
+        mu = mu - diff_filling_at_mu*(mu - mu1)/ (diff_filling_at_mu - diff_filling_at_mu1);
+        mu1 = mu2;
+        diff_filling_at_mu = quick_run(M, s,lamda, t, U,  mu,  Dtau, dim) - given_filling;
+        diff_filling_at_mu1 = diff_filling_at_mu2;
+        count+=1;
+        std::cout.flush();
+        std::cout<<"mu: "<<dtos(mu,2,7)<< " \t filling: "<< dtos(diff_filling_at_mu + given_filling, 2,3)<<" No. of steps: "<<count<<std::endl;
+        
+    }
+    return mu;
+}
 
 
 
-    
 
 int main(int argc, char* argv[]) {
     std::string casename = "testrun";
@@ -263,6 +364,8 @@ int main(int argc, char* argv[]) {
     double U = 4.0;
     double t = 1.0;
     double mu = 0.0;
+    double desired_filling = 1.0e0;
+    bool adjust_filling = false;
     int MCsteps = 1500; 
     int Eqsteps = 500; 
 
@@ -301,6 +404,10 @@ int main(int argc, char* argv[]) {
     if (!params["mu"].empty()) {
         mu = params["mu"].asDouble();
     }
+    if (!params["filling"].empty()) {
+        desired_filling = params["filling"].asDouble();
+        adjust_filling = true;
+    }
     if (!params["MCsteps"].empty()) {
         MCsteps = params["MCsteps"].asInt();
     }
@@ -320,6 +427,12 @@ int main(int argc, char* argv[]) {
     std::cout << "t      : " << t << "\n";
     std::cout << "U      : " << U << "\n";
     std::cout << "mu     : " << mu << "\n";
+    if(adjust_filling){
+        std::cout << "filling: " << desired_filling << "\n";
+    }
+    else{
+        std::cout << "mu     : " << mu << "\n";
+    }
     std::cout << "Mlist  : ";
     for (auto& val : Mlist) {
         std::cout << val << " ";
@@ -332,6 +445,7 @@ int main(int argc, char* argv[]) {
 
     std::string outfilename = casename + "_t" + dtos(t,1,3) + "_U" + dtos(U, 2,3) + ".dat"  ;
     std::ofstream outfile(outfilename);
+
 
 
     //------------------------------
@@ -355,8 +469,10 @@ int main(int argc, char* argv[]) {
 
     //Initializing the H.S. spins
     for (auto& M : Mlist) {
-
-        std::cout<<"M: " << M <<" " <<"T: " << 1/(Dtau*M) << std::endl;
+        double T = 1/(M*Dtau);
+        std::string runfilename = casename + "_t" + dtos(t,1,3) + "_U" + dtos(U, 2,3) + "_T" + dtos(T,1,3) +  ".dat"  ;
+        std::ofstream runfile(runfilename);
+        std::cout<<"M: " << M <<" " <<"T: " << T << std::endl;
 
         Eigen::MatrixXd s(M,N);
         for (int l=0; l<M; l++){
@@ -364,11 +480,15 @@ int main(int argc, char* argv[]) {
                 s(l,j) = 2.0e0*dist(rng) - 1.0e0;
             }
         }
+        if(adjust_filling){
+            mu = chemical_potential(desired_filling,M, s,lamda, t, U, Dtau, dim);
+        }
 
         double filling_avg = 0, filling_var = 0, filling_err = 0; 
         double xxlocalmom_avg = 0, xxlocalmom_var = 0, xxlocalmom_err = 0; 
         double pair_corrl_avg = 0, pair_corrl_var = 0, pair_corrl_err = 0; 
         double spinsuccpt_avg = 0, spinsuccpt_var = 0, spinsuccpt_err = 0; 
+
 
         srand( (unsigned)time( NULL ) );
         Eigen::MatrixXd delta = Eigen::MatrixXd::Identity(N,N);
@@ -379,6 +499,10 @@ int main(int argc, char* argv[]) {
                 auto Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
 
                 for(int i=0; i<N; i++){
+                    //s(l,i) = -s(l,i);
+                    //auto Glup = g(l, 1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
+                    //auto Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
+
                     auto Gliiup = Glup(i,i);
                     double Rup = 1.0 + (1.0 - Gliiup )*(std::exp(-2.0*lamda*s(l,i)) - 1.0);
                     double Rdn = Rup;
@@ -386,8 +510,13 @@ int main(int argc, char* argv[]) {
                         auto Gliidn = Gldn(i,i);
                         Rdn = 1.0 + (1.0 - Gliidn )*(std::exp(2.0*lamda*s(l,i)) - 1.0);
                     }
+                    //std::cout<<"Rup: "<<dtos(Rup,1,5)<<" Rdn: "<<dtos(Rdn,1,5)<<" r: "<<dtos(Rdn*Rup,1,5)<<std::endl;
                     double r = Rup*Rdn; 
-                    double prob = r/(1.0e0 + r);
+                    //double prob = r/(1.0e0 + r);
+                    double prob = r*std::exp(2.0*lamda*s(l,i))/(1.0e0 + r*std::exp(2.0*lamda*s(l,i)));
+                    if(U>0){
+                        prob = r/(1.0e0 + r);
+                    }
                     double randnum = random_number(); //Generating a random number between 0 and 1
                                                       
                     if(randnum < prob ){
@@ -396,7 +525,11 @@ int main(int argc, char* argv[]) {
                         auto glup = Glup; 
                         auto gldn = Gldn; 
                         double gammalupi = std::exp(-2.0*lamda*s(l,i)) - 1.0;
-                        double gammaldni = std::exp( 2.0*lamda*s(l,i)) - 1.0;
+
+                        double gammaldni = gammalupi; 
+                        if(U>0){
+                            gammaldni = std::exp( 2.0*lamda*s(l,i)) - 1.0;
+                        }
                         for(int j = 0; j< N; j++){
                             for (int k = 0; k< N; k++){
                                 Glup(j,k) = glup(j,k) - (delta(j,i) - glup(j,i))*gammalupi*glup(i,k)/(1.0e0 + (1.0e0 - glup(i,i))*gammalupi) ;
@@ -407,7 +540,7 @@ int main(int argc, char* argv[]) {
                 }
             }
             if (n < Eqsteps){
-                progressbar(n,Eqsteps,"Equilibriating..           ");
+                progressbar(n,Eqsteps,"Equilibriating:        ");
             }
             else{
                 double fill = filling(M, s, lamda, t, U, mu, Dtau, dim);
@@ -426,10 +559,15 @@ int main(int argc, char* argv[]) {
                 spinsuccpt_avg += spinsuccpt; 
                 spinsuccpt_var += spinsuccpt*spinsuccpt;
 
-                progressbar(n-Eqsteps,MCsteps-Eqsteps,"Measuring observables.. ");
+                progressbar(n-Eqsteps,MCsteps-Eqsteps,"Measuring observables: ");
+
+                runfile << 1/(Dtau*M) <<" "<< fill <<" "<<  xxlocalmom <<" "<< pair_corrl <<" "<<  spinsuccpt <<std::endl;
             }
         }
-
+        runfile.close();
+        std::ofstream spin_file("spin.dat");
+        spin_file<<s<<std::endl;
+        spin_file.close();
         filling_avg = filling_avg/((float)MCsteps - Eqsteps);
         filling_var = filling_var/((float)MCsteps - Eqsteps) - filling_avg*filling_avg;
         filling_err = sqrt(filling_var/((float) MCsteps - Eqsteps));
@@ -447,14 +585,15 @@ int main(int argc, char* argv[]) {
         spinsuccpt_err = sqrt(spinsuccpt_var/((float) MCsteps - Eqsteps));
 
         std::cout << "-----------------------------------------------------\n";
-        std::cout<<"Filling avg    : "<<filling_avg<<std::endl;
-        std::cout<<"xxlocalmom avg : "<<xxlocalmom_avg<<std::endl;
+        std::cout<<"Filling avg.   : "<<filling_avg<<std::endl;
+        std::cout<<"Chemical Pot.  : "<<mu<<std::endl;
+        std::cout<<"xxlocalmom avg.: "<<xxlocalmom_avg<<std::endl;
         std::cout<<"<s^2>          : "<<3.0e0*xxlocalmom_avg/4.0e0<<std::endl;
         std::cout<<"<C_Delta>      : "<<pair_corrl_avg<<std::endl;
         std::cout<<"<chi>          : "<<spinsuccpt_avg<<std::endl;
         std::cout << "=====================================================\n";
 
-        outfile << 1/(Dtau*M) <<" "<< filling_avg <<" "<< filling_err <<" "<< xxlocalmom_avg <<" "<< xxlocalmom_err <<" "<< pair_corrl_avg <<" "<< pair_corrl_err <<" "<< spinsuccpt_avg <<" "<< spinsuccpt_err <<std::endl;
+        outfile << 1/(Dtau*M) << " " << mu <<" "<< filling_avg <<" "<< filling_err <<" "<< xxlocalmom_avg <<" "<< xxlocalmom_err <<" "<< pair_corrl_avg <<" "<< pair_corrl_err <<" "<< spinsuccpt_avg <<" "<< spinsuccpt_err <<std::endl;
 
     }
     
