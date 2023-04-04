@@ -155,7 +155,7 @@ Eigen::MatrixXd g( int l, double sigma, int M, Eigen::MatrixXd s, double lamda, 
         //Determine the value of l
         int ll = (l + i)%M;
         Usigma = B(ll, sigma, s, lamda, t,  U, mu, Dtau, dim ) * Usigma;
-        int M0 = 1;
+        int M0 = 100;
         if((i+1)%M0 == 0){
             //Decomposing
     		Eigen::HouseholderQR<Eigen::MatrixXd> qr(Usigma*Dsigma);
@@ -172,24 +172,24 @@ Eigen::MatrixXd g( int l, double sigma, int M, Eigen::MatrixXd s, double lamda, 
         }
 
     }
-    //return (Eigen::MatrixXd::Identity(N,N) + Usigma).inverse();
-    Eigen::MatrixXd gsigma_inverse = Usigma.inverse()*Rsigma.inverse() + Dsigma;
+    return (Eigen::MatrixXd::Identity(N,N) + Usigma).inverse();
+    //Eigen::MatrixXd gsigma_inverse = Usigma.inverse()*Rsigma.inverse() + Dsigma;
  
-    Eigen::HouseholderQR<Eigen::MatrixXd> qr(gsigma_inverse);
-    Eigen::MatrixXd Q = qr.householderQ();
-    Eigen::MatrixXd R = qr.matrixQR().triangularView<Eigen::Upper>(); 
+    //Eigen::HouseholderQR<Eigen::MatrixXd> qr(gsigma_inverse);
+    //Eigen::MatrixXd Q = qr.householderQ();
+    //Eigen::MatrixXd R = qr.matrixQR().triangularView<Eigen::Upper>(); 
  
-    for (int j=0; j<N; j++){
-        Dsigma(j,j) = R(j,j);
-        for (int k = j; k<N; k++){
-            R(j,k) = R(j,k)/Dsigma(j,j);
-        }
-    }
-    //std::cout<<Dsigma<<std::endl;
-    Usigma = Usigma*Q;
-    Rsigma = R*Rsigma;
+    //for (int j=0; j<N; j++){
+    //    Dsigma(j,j) = R(j,j);
+    //    for (int k = j; k<N; k++){
+    //        R(j,k) = R(j,k)/Dsigma(j,j);
+    //    }
+    //}
+    ////std::cout<<Dsigma<<std::endl;
+    //Usigma = Usigma*Q;
+    //Rsigma = R*Rsigma;
 
-    return (Rsigma.inverse())*(Dsigma.inverse())*(Usigma.inverse());
+    //return (Rsigma.inverse())*(Dsigma.inverse())*(Usigma.inverse());
 }
 
 double R(int l, double sigma, int i, int M, Eigen::MatrixXd s, double lamda, double t,  double U, double mu, double Dtau, std::vector<int> dim  ) {
@@ -250,6 +250,40 @@ double pauli_spin_succept(int M, Eigen::MatrixXd s, double lamda, double t, doub
     return Dtau*gsum/((float) N);
 }
 
+double energy(int M, Eigen::MatrixXd s, double lamda, double t, double U, double mu, double Dtau, std::vector<int> dim){
+    int N = dim[0]*dim[1]*dim[2];
+    int Nx = dim[0];
+    int Ny = dim[1];
+    int Nz = dim[2];
+    double en = 0; 
+    double hopping1 = 0; 
+    double hopping2 = 0; 
+    double interac = 0; 
+    double mu_term = 0;
+
+    for(int l = 0; l<M; l++){
+        Eigen::MatrixXd Glup = g(l,1.0e0 , M, s, lamda, t,  U, mu, Dtau, dim);
+        Eigen::MatrixXd Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
+        for (int i = 0; i<N; i++){
+            int x = i % Nx;
+            int y = (i % (Nx * Ny)) / Nx;
+            int z = i / (Nx * Ny);
+            int xnbri = Nx * Ny * z + Nx * y + (x + 1) % Nx;
+            int ynbri = Nx * Ny * z + Nx * ((y + 1) % Ny) + x;
+            int znbri = Nx * Ny * ((z + 1) % Nz) + Nx * y + x;
+            interac  += U*(1.0 - Glup(i,i) - Gldn(i,i) + Glup(i,i)*Gldn(i,i));
+            hopping1 += -(Glup(i,xnbri) + Glup(i,ynbri) + Glup(i,znbri) + Gldn(i,xnbri) + Gldn(i,ynbri) + Gldn(i,znbri));
+            hopping2 += -(Glup(xnbri,i) + Glup(ynbri,i) + Glup(znbri,i) + Gldn(xnbri,i) + Gldn(ynbri,i) + Gldn(znbri,i));
+            mu_term  += -mu*(2.0 - Glup(i,i) - Gldn(i,i));
+        }
+        en += interac + hopping1 + hopping2 + mu_term;
+
+    }
+    return en/((float) N*M);
+}
+
+
+
 double quick_run(int M, Eigen::MatrixXd s, double lamda, double t, double U, double mu, double Dtau, std::vector<int> dim){
     int MCsteps = 500;
     int Eqsteps = 200;
@@ -263,6 +297,7 @@ double quick_run(int M, Eigen::MatrixXd s, double lamda, double t, double U, dou
             auto Glup = g(l, 1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
             auto Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
             for(int i=0; i<N; i++){
+                //s(l,i) = -s(l,i);
                 auto Gliiup = Glup(i,i);
                 double Rup = 1.0 + (1.0 - Gliiup )*(std::exp(-2.0*lamda*s(l,i)) - 1.0);
                 double Rdn = Rup;
@@ -488,6 +523,7 @@ int main(int argc, char* argv[]) {
         double xxlocalmom_avg = 0, xxlocalmom_var = 0, xxlocalmom_err = 0; 
         double pair_corrl_avg = 0, pair_corrl_var = 0, pair_corrl_err = 0; 
         double spinsuccpt_avg = 0, spinsuccpt_var = 0, spinsuccpt_err = 0; 
+        double energy_avg = 0    , energy_var = 0    , energy_err = 0; 
 
 
         srand( (unsigned)time( NULL ) );
@@ -559,9 +595,13 @@ int main(int argc, char* argv[]) {
                 spinsuccpt_avg += spinsuccpt; 
                 spinsuccpt_var += spinsuccpt*spinsuccpt;
 
+                double en =  energy(M, s, lamda, t, U, mu, Dtau, dim);
+                energy_avg+= en;
+                energy_var+= en*en;
+
                 progressbar(n-Eqsteps,MCsteps-Eqsteps,"Measuring observables: ");
 
-                runfile << 1/(Dtau*M) <<" "<< fill <<" "<<  xxlocalmom <<" "<< pair_corrl <<" "<<  spinsuccpt <<std::endl;
+                runfile << 1/(Dtau*M) <<" "<< fill <<" "<< en << " "  << xxlocalmom <<" "<< pair_corrl <<" "<<  spinsuccpt <<std::endl;
             }
         }
         runfile.close();
@@ -571,6 +611,10 @@ int main(int argc, char* argv[]) {
         filling_avg = filling_avg/((float)MCsteps - Eqsteps);
         filling_var = filling_var/((float)MCsteps - Eqsteps) - filling_avg*filling_avg;
         filling_err = sqrt(filling_var/((float) MCsteps - Eqsteps));
+
+        energy_avg = energy_avg/((float)MCsteps - Eqsteps);
+        energy_var = energy_var/((float)MCsteps - Eqsteps) - energy_avg*energy_avg;
+        energy_err = sqrt(energy_var/((float) MCsteps - Eqsteps));
 
         xxlocalmom_avg = xxlocalmom_avg/((float)MCsteps - Eqsteps);
         xxlocalmom_var = xxlocalmom_var/((float)MCsteps - Eqsteps) - xxlocalmom_avg*xxlocalmom_avg;
@@ -586,6 +630,7 @@ int main(int argc, char* argv[]) {
 
         std::cout << "-----------------------------------------------------\n";
         std::cout<<"Filling avg.   : "<<filling_avg<<std::endl;
+        std::cout<<"<E>            : "<<energy_avg<<std::endl;
         std::cout<<"Chemical Pot.  : "<<mu<<std::endl;
         std::cout<<"xxlocalmom avg.: "<<xxlocalmom_avg<<std::endl;
         std::cout<<"<s^2>          : "<<3.0e0*xxlocalmom_avg/4.0e0<<std::endl;
@@ -593,7 +638,7 @@ int main(int argc, char* argv[]) {
         std::cout<<"<chi>          : "<<spinsuccpt_avg<<std::endl;
         std::cout << "=====================================================\n";
 
-        outfile << 1/(Dtau*M) << " " << mu <<" "<< filling_avg <<" "<< filling_err <<" "<< xxlocalmom_avg <<" "<< xxlocalmom_err <<" "<< pair_corrl_avg <<" "<< pair_corrl_err <<" "<< spinsuccpt_avg <<" "<< spinsuccpt_err <<std::endl;
+        outfile << 1/(Dtau*M) << " " << mu <<" "<< filling_avg <<" "<< filling_err << " " << energy_avg << " " << energy_err <<" "<< xxlocalmom_avg <<" "<< xxlocalmom_err <<" "<< pair_corrl_avg <<" "<< pair_corrl_err <<" "<< spinsuccpt_avg <<" "<< spinsuccpt_err <<std::endl;
 
     }
     
