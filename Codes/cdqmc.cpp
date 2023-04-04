@@ -271,12 +271,12 @@ double energy(int M, Eigen::MatrixXd s, double lamda, double t, double U, double
             int xnbri = Nx * Ny * z + Nx * y + (x + 1) % Nx;
             int ynbri = Nx * Ny * z + Nx * ((y + 1) % Ny) + x;
             int znbri = Nx * Ny * ((z + 1) % Nz) + Nx * y + x;
-            interac  += U*(1.0 - Glup(i,i) - Gldn(i,i) + Glup(i,i)*Gldn(i,i));
-            hopping1 += -(Glup(i,xnbri) + Glup(i,ynbri) + Glup(i,znbri) + Gldn(i,xnbri) + Gldn(i,ynbri) + Gldn(i,znbri));
-            hopping2 += -(Glup(xnbri,i) + Glup(ynbri,i) + Glup(znbri,i) + Gldn(xnbri,i) + Gldn(ynbri,i) + Gldn(znbri,i));
-            mu_term  += -mu*(2.0 - Glup(i,i) - Gldn(i,i));
+            interac  = U*(1.0 - Glup(i,i) - Gldn(i,i) + Glup(i,i)*Gldn(i,i));
+            hopping1 = -(Glup(i,xnbri) + Glup(i,ynbri) + Glup(i,znbri) + Gldn(i,xnbri) + Gldn(i,ynbri) + Gldn(i,znbri));
+            hopping2 = -(Glup(xnbri,i) + Glup(ynbri,i) + Glup(znbri,i) + Gldn(xnbri,i) + Gldn(ynbri,i) + Gldn(znbri,i));
+            mu_term  = -mu*(2.0 - Glup(i,i) - Gldn(i,i));
+            en += interac + hopping1 + hopping2 ;
         }
-        en += interac + hopping1 + hopping2 + mu_term;
 
     }
     return en/((float) N*M);
