@@ -148,48 +148,32 @@ Eigen::MatrixXd B(int l, double sigma,Eigen::MatrixXd s,double  lamda,double t,d
 Eigen::MatrixXd g( int l, double sigma, int M, Eigen::MatrixXd s, double lamda, double t,  double U, double mu, double Dtau, std::vector<int> dim  ) {
     int N = dim[0]*dim[1]*dim[2];
     Eigen::MatrixXd Usigma = Eigen::MatrixXd::Identity(N, N);
-    Eigen::MatrixXd Rsigma = Eigen::MatrixXd::Identity(N, N);
+    Eigen::MatrixXd Vsigma = Eigen::MatrixXd::Identity(N, N);
     Eigen::MatrixXd Dsigma = Eigen::MatrixXd::Identity(N, N);
 
     for (int i = 0; i < M; i++) {
         //Determine the value of l
         int ll = (l + i)%M;
         Usigma = B(ll, sigma, s, lamda, t,  U, mu, Dtau, dim ) * Usigma;
-        int M0 = 100;
-        if((i+1)%M0 == 0){
+        int M0 = 4;
+        if((i+1)%M0 == 0 and M%M0 == 0){
             //Decomposing
-    		Eigen::HouseholderQR<Eigen::MatrixXd> qr(Usigma*Dsigma);
-    		Eigen::MatrixXd Q = qr.householderQ();
-    		Eigen::MatrixXd R = qr.matrixQR().triangularView<Eigen::Upper>(); 
-            for (int j=0; j<N; j++){
-                Dsigma(j,j) = R(j,j);
-                for (int k = j; k<N; k++){
-                    R(j,k) = R(j,k)/Dsigma(j,j);
-                }
-            }
-            Usigma = Q; 
-            Rsigma = R*Rsigma;
+            Eigen::JacobiSVD<Eigen::MatrixXd> svd( Usigma*Dsigma, Eigen::ComputeThinU | Eigen::ComputeThinV);
+            Dsigma = svd.singularValues().asDiagonal();
+            Usigma = svd.matrixU(); 
+            Vsigma = svd.matrixV().transpose()*Vsigma;
         }
 
     }
-    return (Eigen::MatrixXd::Identity(N,N) + Usigma).inverse();
-    //Eigen::MatrixXd gsigma_inverse = Usigma.inverse()*Rsigma.inverse() + Dsigma;
+    //return (Eigen::MatrixXd::Identity(N,N) + Usigma).inverse();
+    Eigen::MatrixXd gsigma_inverse = Usigma.inverse()*Vsigma.inverse() + Dsigma;
  
-    //Eigen::HouseholderQR<Eigen::MatrixXd> qr(gsigma_inverse);
-    //Eigen::MatrixXd Q = qr.householderQ();
-    //Eigen::MatrixXd R = qr.matrixQR().triangularView<Eigen::Upper>(); 
- 
-    //for (int j=0; j<N; j++){
-    //    Dsigma(j,j) = R(j,j);
-    //    for (int k = j; k<N; k++){
-    //        R(j,k) = R(j,k)/Dsigma(j,j);
-    //    }
-    //}
-    ////std::cout<<Dsigma<<std::endl;
-    //Usigma = Usigma*Q;
-    //Rsigma = R*Rsigma;
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd( gsigma_inverse, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    Dsigma = svd.singularValues().asDiagonal();
+    Usigma = Usigma*svd.matrixU();
+    Vsigma = svd.matrixV().transpose()*Vsigma;
 
-    //return (Rsigma.inverse())*(Dsigma.inverse())*(Usigma.inverse());
+    return (Vsigma.inverse())*(Dsigma.inverse())*(Usigma.inverse());
 }
 
 double R(int l, double sigma, int i, int M, Eigen::MatrixXd s, double lamda, double t,  double U, double mu, double Dtau, std::vector<int> dim  ) {
@@ -259,7 +243,6 @@ double energy(int M, Eigen::MatrixXd s, double lamda, double t, double U, double
     double hopping1 = 0; 
     double hopping2 = 0; 
     double interac = 0; 
-    double mu_term = 0;
 
     for(int l = 0; l<M; l++){
         Eigen::MatrixXd Glup = g(l,1.0e0 , M, s, lamda, t,  U, mu, Dtau, dim);
@@ -274,7 +257,6 @@ double energy(int M, Eigen::MatrixXd s, double lamda, double t, double U, double
             interac  = U*(1.0 - Glup(i,i) - Gldn(i,i) + Glup(i,i)*Gldn(i,i));
             hopping1 = -(Glup(i,xnbri) + Glup(i,ynbri) + Glup(i,znbri) + Gldn(i,xnbri) + Gldn(i,ynbri) + Gldn(i,znbri));
             hopping2 = -(Glup(xnbri,i) + Glup(ynbri,i) + Glup(znbri,i) + Gldn(xnbri,i) + Gldn(ynbri,i) + Gldn(znbri,i));
-            mu_term  = -mu*(2.0 - Glup(i,i) - Gldn(i,i));
             en += interac + hopping1 + hopping2 ;
         }
 
@@ -336,6 +318,11 @@ double quick_run(int M, Eigen::MatrixXd s, double lamda, double t, double U, dou
             double fill  = filling(M, s, lamda, t, U, mu, Dtau, dim);
             filling_avg += fill;
             filling_var += fill*fill;
+            progressbar(n-Eqsteps,MCsteps-Eqsteps,"Measuring Observables  ");
+        }
+        else{
+
+            progressbar(n,Eqsteps,"Equilibriating:        ");
         }
     }
     return filling_avg/((float) MCsteps - Eqsteps);
@@ -521,9 +508,13 @@ int main(int argc, char* argv[]) {
 
         double filling_avg = 0, filling_var = 0, filling_err = 0; 
         double xxlocalmom_avg = 0, xxlocalmom_var = 0, xxlocalmom_err = 0; 
+        double zzlocalmom_avg = 0, zzlocalmom_var = 0, zzlocalmom_err = 0; 
         double pair_corrl_avg = 0, pair_corrl_var = 0, pair_corrl_err = 0; 
         double spinsuccpt_avg = 0, spinsuccpt_var = 0, spinsuccpt_err = 0; 
         double energy_avg = 0    , energy_var = 0    , energy_err = 0; 
+        double spin_spin_corrn1_avg = 0    , spin_spin_corrn1_var = 0    , spin_spin_corrn1_err = 0; 
+        double spin_spin_corrn2_avg = 0    , spin_spin_corrn2_var = 0    , spin_spin_corrn2_err = 0; 
+        double spin_spin_corrn3_avg = 0    , spin_spin_corrn3_var = 0    , spin_spin_corrn3_err = 0; 
 
 
         srand( (unsigned)time( NULL ) );
@@ -535,7 +526,7 @@ int main(int argc, char* argv[]) {
                 auto Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
 
                 for(int i=0; i<N; i++){
-                    //s(l,i) = -s(l,i);
+                    s(l,i) = -s(l,i);
                     //auto Glup = g(l, 1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
                     //auto Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
 
@@ -556,7 +547,7 @@ int main(int argc, char* argv[]) {
                     double randnum = random_number(); //Generating a random number between 0 and 1
                                                       
                     if(randnum < prob ){
-                        s(l,i) = -s(l,i);
+                        //s(l,i) = -s(l,i);
                         //updating the green's function 
                         auto glup = Glup; 
                         auto gldn = Gldn; 
@@ -573,35 +564,128 @@ int main(int argc, char* argv[]) {
                             }
                         }
                     }
+                    else{
+                        s(l,i) = -s(l,i);
+                    }
                 }
             }
             if (n < Eqsteps){
                 progressbar(n,Eqsteps,"Equilibriating:        ");
             }
             else{
-                double fill = filling(M, s, lamda, t, U, mu, Dtau, dim);
+                                // Measurement is going on here.
+                double fill= 0.0;
+                double xxlocalmom = 0;
+                double zzlocalmom = 0;
+                double pair_corrl = 0;
+                double spinsuccpt = 0;
+                double spin_spin_corrn1 = 0;
+                double spin_spin_corrn2 = 0;
+                double spin_spin_corrn3 = 0;
+                double en = 0;
+                double hopping1 = 0;
+                double hopping2 = 0;
+                double interac  = 0;
+                int N = dim[0]*dim[1]*dim[2];
+                int Nx = dim[0];
+                int Ny = dim[1];
+                int Nz = dim[2];
+
+                Eigen::MatrixXd delta = Eigen::MatrixXd::Identity(N,N);
+
+                for (int l=0; l<M; l++){
+                    auto Glup = g(l, 1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
+                    auto Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
+                    Eigen::ArrayXd Glup_diag = Glup.diagonal().array();
+                    Eigen::ArrayXd Gldn_diag = Gldn.diagonal().array();
+                    Eigen::ArrayXXd Gluparr = /*delta*/ - g(l,1.0e0 , M, s, lamda, t,  U, mu, Dtau, dim);
+                    Eigen::ArrayXXd Gldnarr = /*delta*/ - g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim);
+
+
+                    fill += (Glup + Gldn).trace();
+                    xxlocalmom += ((1.0e0 - Glup_diag)*Gldn_diag + (1.0e0 - Gldn_diag)*Glup_diag).sum();
+                    zzlocalmom += ((1.0e0 - Glup_diag) - 2.0e0*(1.0e0 - Glup_diag)*(1.0e0 - Gldn_diag) + (1.0e0 - Gldn_diag)).sum();
+                    pair_corrl += (Gluparr*Gldnarr).sum();
+                    spinsuccpt += (Glup + Gldn).trace()*(Glup + Gldn).trace() + (Glup + Gldn).trace() - 0.5*(Glup*Gldn).trace() - 0.5*(Gldn*Glup).trace();
+
+                    for (int i = 0; i<N; i++){
+                        int x = i % Nx;
+                        int y = (i % (Nx * Ny)) / Nx;
+                        int z = i / (Nx * Ny);
+                        int xnbri = Nx * Ny * z + Nx * y + (x + 1) % Nx;
+                        int ynbri = Nx * Ny * z + Nx * ((y + 1) % Ny) + x;
+                        int znbri = Nx * Ny * ((z + 1) % Nz) + Nx * y + x;
+                        interac   = U*(1.0 - Glup(i,i) - Gldn(i,i) + Glup(i,i)*Gldn(i,i));
+                        hopping1  = -(Glup(i,xnbri) + Glup(i,ynbri) + Glup(i,znbri) + Gldn(i,xnbri) + Gldn(i,ynbri) + Gldn(i,znbri));
+                        hopping2  = -(Glup(xnbri,i) + Glup(ynbri,i) + Glup(znbri,i) + Gldn(xnbri,i) + Gldn(ynbri,i) + Gldn(znbri,i));
+                        en += interac + hopping1 + hopping2 ;
+                    }
+
+                //Things that are calculated from the ising spin field..
+
+                    for (int i=0; i<N; i++){
+                        int x = i % Nx;
+                        int y = (i % (Nx * Ny)) / Nx;
+                        int z = i / (Nx * Ny);
+                        int xnbr1i = Nx * Ny * z + Nx * y + (x + 1) % Nx;
+                        int ynbr1i = Nx * Ny * z + Nx * ((y + 1) % Ny) + x;
+                        int znbr1i = Nx * Ny * ((z + 1) % Nz) + Nx * y + x;
+                        
+                        int xynbr2i = Nx * Ny * z + Nx * ((y + 1) % Ny) + (x + 1) % Nx;
+                        int zynbr2i = Nx * Ny * ((z + 1) % Nz) + Nx * ((y + 1) % Ny) + x;
+                        int zxnbr2i = Nx * Ny * ((z + 1) % Nz) + Nx * y + (x + 1) % Nx;
+
+                        int xyznbr3i = Nx * Ny * ((z + 1) % Nz) + Nx * ((y + 1) % Ny) + (x + 1) % Nx;
+
+                        //spin_spin_corrn1 += s(l,i)*(s(l,xnbr1i) + s(l,ynbr1i) + s(l,znbr1i));
+                        //spin_spin_corrn2 += s(l,i)*(s(l,xynbr2i) + s(l,zynbr2i) + s(l,zxnbr2i));
+                        //spin_spin_corrn3 += s(l,i)*s(l,xyznbr3i); 
+                        spin_spin_corrn1 += (-Glup(i,xnbr1i)*Gldn(xnbr1i,i)-Glup(i,xnbr1i)*Gldn(xnbr1i,i)-Glup(i,ynbr1i)*Gldn(ynbr1i,i)-Glup(i,ynbr1i)*Gldn(ynbr1i,i)-Glup(i,znbr1i)*Gldn(znbr1i,i)-Glup(i,znbr1i)*Gldn(znbr1i,i))/3.0e0;
+                        spin_spin_corrn2 += (-Glup(i,xynbr2i)*Gldn(xynbr2i,i)-Glup(i,zynbr2i)*Gldn(zynbr2i,i)-Glup(i,zynbr2i)*Gldn(zynbr2i,i)-Glup(i,zynbr2i)*Gldn(zynbr2i,i)-Glup(i,zxnbr2i)*Gldn(zxnbr2i,i)-Glup(i,zxnbr2i)*Gldn(zxnbr2i,i))/3.0e0;
+                        spin_spin_corrn3 += -Glup(i,xyznbr3i)*Gldn(xyznbr3i,i) - Gldn(i,xyznbr3i)*Glup(xyznbr3i,i); 
+                    }
+                }
+                spin_spin_corrn1 = std::abs(spin_spin_corrn1)/((double) M*N);
+                spin_spin_corrn2 = std::abs(spin_spin_corrn2)/((double) M*N);
+                spin_spin_corrn3 = std::abs(spin_spin_corrn3)/((double) M*N);
+
+                fill  = fill/((float) M*N);
+                xxlocalmom = xxlocalmom/((float) M*N);
+                zzlocalmom = zzlocalmom/((float) M*N);
+                pair_corrl = pair_corrl/((float) N*M);
+                en = en/((float) N*M);
+                //==============================================================================
+                //==============================================================================
                 filling_avg += fill;
                 filling_var += fill*fill;
 
-                double xxlocalmom = xx_local_moment(M, s, lamda, t, U, mu, Dtau, dim);
                 xxlocalmom_avg += xxlocalmom; 
                 xxlocalmom_var += xxlocalmom*xxlocalmom; 
 
-                double pair_corrl = pair_corr_func(M, s, lamda, t, U, mu, Dtau, dim);
+                zzlocalmom_avg += zzlocalmom; 
+                zzlocalmom_var += zzlocalmom*zzlocalmom; 
+
                 pair_corrl_avg += pair_corrl; 
                 pair_corrl_var += pair_corrl*pair_corrl;
 
-                double spinsuccpt = pauli_spin_succept(M, s, lamda, t, U, mu, Dtau, dim);
                 spinsuccpt_avg += spinsuccpt; 
                 spinsuccpt_var += spinsuccpt*spinsuccpt;
 
-                double en =  energy(M, s, lamda, t, U, mu, Dtau, dim);
                 energy_avg+= en;
                 energy_var+= en*en;
 
+                spin_spin_corrn1_avg += spin_spin_corrn1;
+                spin_spin_corrn1_var += spin_spin_corrn1*spin_spin_corrn1;
+
+                spin_spin_corrn2_avg += spin_spin_corrn2;
+                spin_spin_corrn2_var += spin_spin_corrn2*spin_spin_corrn1;
+
+                spin_spin_corrn3_avg += spin_spin_corrn3;
+                spin_spin_corrn3_var += spin_spin_corrn3*spin_spin_corrn3;
+
                 progressbar(n-Eqsteps,MCsteps-Eqsteps,"Measuring observables: ");
 
-                runfile << 1/(Dtau*M) <<" "<< fill <<" "<< en << " "  << xxlocalmom <<" "<< pair_corrl <<" "<<  spinsuccpt <<std::endl;
+                runfile << 1/(Dtau*M) <<" "<< fill <<" "<< en << " "  << xxlocalmom <<" "<< zzlocalmom <<" "<< spin_spin_corrn1<<" "<< spin_spin_corrn2<<" "<< spin_spin_corrn3<<" " <<pair_corrl <<" "<<  spinsuccpt <<std::endl;
             }
         }
         runfile.close();
@@ -620,6 +704,22 @@ int main(int argc, char* argv[]) {
         xxlocalmom_var = xxlocalmom_var/((float)MCsteps - Eqsteps) - xxlocalmom_avg*xxlocalmom_avg;
         xxlocalmom_err = sqrt(xxlocalmom_var/((float) MCsteps - Eqsteps));
 
+        zzlocalmom_avg = zzlocalmom_avg/((float)MCsteps - Eqsteps);
+        zzlocalmom_var = zzlocalmom_var/((float)MCsteps - Eqsteps) - zzlocalmom_avg*zzlocalmom_avg;
+        zzlocalmom_err = sqrt(zzlocalmom_var/((float) MCsteps - Eqsteps));
+
+        spin_spin_corrn1_avg = spin_spin_corrn1_avg/((float)MCsteps - Eqsteps);
+        spin_spin_corrn1_var = spin_spin_corrn1_var/((float)MCsteps - Eqsteps) - spin_spin_corrn1_avg*spin_spin_corrn1_avg;
+        spin_spin_corrn1_err = sqrt(spin_spin_corrn1_var/((float) MCsteps - Eqsteps));
+
+        spin_spin_corrn2_avg = spin_spin_corrn2_avg/((float)MCsteps - Eqsteps);
+        spin_spin_corrn2_var = spin_spin_corrn2_var/((float)MCsteps - Eqsteps) - spin_spin_corrn2_avg*spin_spin_corrn2_avg;
+        spin_spin_corrn2_err = sqrt(spin_spin_corrn2_var/((float) MCsteps - Eqsteps));
+
+        spin_spin_corrn3_avg = spin_spin_corrn3_avg/((float)MCsteps - Eqsteps);
+        spin_spin_corrn3_var = spin_spin_corrn3_var/((float)MCsteps - Eqsteps) - spin_spin_corrn3_avg*spin_spin_corrn3_avg;
+        spin_spin_corrn3_err = sqrt(spin_spin_corrn3_var/((float) MCsteps - Eqsteps));
+
         pair_corrl_avg = pair_corrl_avg/((float)MCsteps - Eqsteps);
         pair_corrl_var = pair_corrl_var/((float)MCsteps - Eqsteps) - pair_corrl_avg*pair_corrl_avg;
         pair_corrl_err = sqrt(pair_corrl_var/((float) MCsteps - Eqsteps));
@@ -633,12 +733,16 @@ int main(int argc, char* argv[]) {
         std::cout<<"<E>            : "<<energy_avg<<std::endl;
         std::cout<<"Chemical Pot.  : "<<mu<<std::endl;
         std::cout<<"xxlocalmom avg.: "<<xxlocalmom_avg<<std::endl;
+        std::cout<<"zzlocalmom avg.: "<<zzlocalmom_avg<<std::endl;
         std::cout<<"<s^2>          : "<<3.0e0*xxlocalmom_avg/4.0e0<<std::endl;
+        std::cout<<"spinspincorrn1 : "<<spin_spin_corrn1_avg<<std::endl;
+        std::cout<<"spinspincorrn2 : "<<spin_spin_corrn2_avg<<std::endl;
+        std::cout<<"spinspincorrn3 : "<<spin_spin_corrn3_avg<<std::endl;
         std::cout<<"<C_Delta>      : "<<pair_corrl_avg<<std::endl;
         std::cout<<"<chi>          : "<<spinsuccpt_avg<<std::endl;
         std::cout << "=====================================================\n";
 
-        outfile << 1/(Dtau*M) << " " << mu <<" "<< filling_avg <<" "<< filling_err << " " << energy_avg << " " << energy_err <<" "<< xxlocalmom_avg <<" "<< xxlocalmom_err <<" "<< pair_corrl_avg <<" "<< pair_corrl_err <<" "<< spinsuccpt_avg <<" "<< spinsuccpt_err <<std::endl;
+        outfile << 1/(Dtau*M) << " " << mu <<" "<< filling_avg <<" "<< filling_err << " " << energy_avg << " " << energy_err <<" "<< xxlocalmom_avg <<" "<< xxlocalmom_err <<" " << zzlocalmom_avg <<" " << zzlocalmom_err <<" "<< spin_spin_corrn1_avg<<" " << spin_spin_corrn1_err<<" "<< spin_spin_corrn2_avg<<" "<< spin_spin_corrn2_err<< " " <<spin_spin_corrn3_avg<<" "<< spin_spin_corrn3_err << " " << pair_corrl_avg <<" "<< pair_corrl_err <<" "<< spinsuccpt_avg <<" "<< spinsuccpt_err <<std::endl;
 
     }
     
