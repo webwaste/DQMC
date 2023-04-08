@@ -1,0 +1,13 @@
+{
+    "casename": "spin_spin_corr",
+    "dim"     : [4,4,4],
+    "t"       : 1.0,
+    "U"       : 6,
+    "mu"      : 3, 
+    "//filling" : 0.5,
+    "Mlist"   : [2,3,4,5,6,8,16],
+    "Dtau"    : 0.125,
+    "MCsteps" : 1500,
+    "Eqsteps" :  500
+}
+

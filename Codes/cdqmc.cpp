@@ -155,7 +155,7 @@ Eigen::MatrixXd g( int l, double sigma, int M, Eigen::MatrixXd s, double lamda, 
         //Determine the value of l
         int ll = (l + i)%M;
         Usigma = B(ll, sigma, s, lamda, t,  U, mu, Dtau, dim ) * Usigma;
-        int M0 = 4;
+        int M0 = 32;
         if((i+1)%M0 == 0 and M%M0 == 0){
             //Decomposing
             Eigen::JacobiSVD<Eigen::MatrixXd> svd( Usigma*Dsigma, Eigen::ComputeThinU | Eigen::ComputeThinV);
@@ -645,9 +645,9 @@ int main(int argc, char* argv[]) {
                         spin_spin_corrn3 += -Glup(i,xyznbr3i)*Gldn(xyznbr3i,i) - Gldn(i,xyznbr3i)*Glup(xyznbr3i,i); 
                     }
                 }
-                spin_spin_corrn1 = std::abs(spin_spin_corrn1)/((double) M*N);
-                spin_spin_corrn2 = std::abs(spin_spin_corrn2)/((double) M*N);
-                spin_spin_corrn3 = std::abs(spin_spin_corrn3)/((double) M*N);
+                spin_spin_corrn1 = spin_spin_corrn1/((double) M*N);
+                spin_spin_corrn2 = spin_spin_corrn2/((double) M*N);
+                spin_spin_corrn3 = spin_spin_corrn3/((double) M*N);
 
                 fill  = fill/((float) M*N);
                 xxlocalmom = xxlocalmom/((float) M*N);
