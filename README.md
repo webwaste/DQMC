@@ -19,6 +19,7 @@ execute the code by typing:
 ----------------------------------------------
 The in.dqmc.json file looks like this: 
 ----------------------------------------------
+```json
 {
     "casename": "testrun",
     "dim"     : [4,4,4],
@@ -31,6 +32,7 @@ The in.dqmc.json file looks like this:
     "MCsteps" : 1500,
     "Eqsteps" :  500
 }
+```
 ----------------------------------------------
 'dim' stands for dimensions [Nx,Ny,Nz]
 't'   is the nearest neighbour hopping amplitude
