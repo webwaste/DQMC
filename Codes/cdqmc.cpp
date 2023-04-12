@@ -1,5 +1,5 @@
 #include <iostream>
-#define EIGEN_USE_BLIS
+#define EIGEN_USE_BLAS
 #include <eigen3/Eigen/Dense>
 #include <eigen3/Eigen/Core>
 #include<string>
