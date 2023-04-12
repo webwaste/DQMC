@@ -155,7 +155,7 @@ Eigen::MatrixXd g( int l, double sigma, int M, Eigen::MatrixXd s, double lamda, 
         //Determine the value of l
         int ll = (l + i)%M;
         Usigma = B(ll, sigma, s, lamda, t,  U, mu, Dtau, dim ) * Usigma;
-        int M0 = 32;
+        int M0 = 4;
         if((i+1)%M0 == 0 and M%M0 == 0){
             //Decomposing
             Eigen::JacobiSVD<Eigen::MatrixXd> svd( Usigma*Dsigma, Eigen::ComputeThinU | Eigen::ComputeThinV);
@@ -169,11 +169,14 @@ Eigen::MatrixXd g( int l, double sigma, int M, Eigen::MatrixXd s, double lamda, 
     Eigen::MatrixXd gsigma_inverse = Usigma.inverse()*Vsigma.inverse() + Dsigma;
  
     Eigen::JacobiSVD<Eigen::MatrixXd> svd( gsigma_inverse, Eigen::ComputeThinU | Eigen::ComputeThinV);
-    Dsigma = svd.singularValues().asDiagonal();
+
+    Eigen::ArrayXd Dsigma_diag        =  svd.singularValues();
+    Eigen::VectorXd Dsigmainversediag = 1.0/Dsigma_diag;
+    Eigen::MatrixXd Dsigmainverse     = Dsigmainversediag.asDiagonal();
     Usigma = Usigma*svd.matrixU();
     Vsigma = svd.matrixV().transpose()*Vsigma;
 
-    return (Vsigma.inverse())*(Dsigma.inverse())*(Usigma.inverse());
+    return (Vsigma.inverse())*Dsigmainverse*(Usigma.inverse());
 }
 
 double R(int l, double sigma, int i, int M, Eigen::MatrixXd s, double lamda, double t,  double U, double mu, double Dtau, std::vector<int> dim  ) {
@@ -516,6 +519,7 @@ int main(int argc, char* argv[]) {
         double spin_spin_corrn2_avg = 0    , spin_spin_corrn2_var = 0    , spin_spin_corrn2_err = 0; 
         double spin_spin_corrn3_avg = 0    , spin_spin_corrn3_var = 0    , spin_spin_corrn3_err = 0; 
 
+        int accepting_count=0; // To see how many times the  flipping of spin is accepted. 
 
         srand( (unsigned)time( NULL ) );
         Eigen::MatrixXd delta = Eigen::MatrixXd::Identity(N,N);
@@ -547,20 +551,28 @@ int main(int argc, char* argv[]) {
                     double randnum = random_number(); //Generating a random number between 0 and 1
                                                       
                     if(randnum < prob ){
+                        accepting_count++;
                         //s(l,i) = -s(l,i);
                         //updating the green's function 
-                        auto glup = Glup; 
-                        auto gldn = Gldn; 
-                        double gammalupi = std::exp(-2.0*lamda*s(l,i)) - 1.0;
-
-                        double gammaldni = gammalupi; 
-                        if(U>0){
-                            gammaldni = std::exp( 2.0*lamda*s(l,i)) - 1.0;
+                        if(U>8){
+                            Glup = g(l, 1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
+                            Gldn = g(l,-1.0e0, M, s, lamda, t,  U, mu, Dtau, dim );
                         }
-                        for(int j = 0; j< N; j++){
-                            for (int k = 0; k< N; k++){
-                                Glup(j,k) = glup(j,k) - (delta(j,i) - glup(j,i))*gammalupi*glup(i,k)/(1.0e0 + (1.0e0 - glup(i,i))*gammalupi) ;
-                                Gldn(j,k) = gldn(j,k) - (delta(j,i) - gldn(j,i))*gammaldni*gldn(i,k)/(1.0e0 + (1.0e0 - gldn(i,i))*gammalupi) ;
+                        else{
+
+                            auto glup = Glup; 
+                            auto gldn = Gldn; 
+                            double gammalupi = std::exp(-2.0*lamda*s(l,i)) - 1.0;
+
+                            double gammaldni = gammalupi; 
+                            if(U>0){
+                                gammaldni = std::exp( 2.0*lamda*s(l,i)) - 1.0;
+                            }
+                            for(int j = 0; j< N; j++){
+                                for (int k = 0; k< N; k++){
+                                    Glup(j,k) = glup(j,k) - (delta(j,i) - glup(j,i))*gammalupi*glup(i,k)/(1.0e0 + (1.0e0 - glup(i,i))*gammalupi) ;
+                                    Gldn(j,k) = gldn(j,k) - (delta(j,i) - gldn(j,i))*gammaldni*gldn(i,k)/(1.0e0 + (1.0e0 - gldn(i,i))*gammalupi) ;
+                                }
                             }
                         }
                     }
@@ -740,6 +752,7 @@ int main(int argc, char* argv[]) {
         std::cout<<"spinspincorrn3 : "<<spin_spin_corrn3_avg<<std::endl;
         std::cout<<"<C_Delta>      : "<<pair_corrl_avg<<std::endl;
         std::cout<<"<chi>          : "<<spinsuccpt_avg<<std::endl;
+        std::cout<<"accepting count: "<<accepting_count<<std::endl;
         std::cout << "=====================================================\n";
 
         outfile << 1/(Dtau*M) << " " << mu <<" "<< filling_avg <<" "<< filling_err << " " << energy_avg << " " << energy_err <<" "<< xxlocalmom_avg <<" "<< xxlocalmom_err <<" " << zzlocalmom_avg <<" " << zzlocalmom_err <<" "<< spin_spin_corrn1_avg<<" " << spin_spin_corrn1_err<<" "<< spin_spin_corrn2_avg<<" "<< spin_spin_corrn2_err<< " " <<spin_spin_corrn3_avg<<" "<< spin_spin_corrn3_err << " " << pair_corrl_avg <<" "<< pair_corrl_err <<" "<< spinsuccpt_avg <<" "<< spinsuccpt_err <<std::endl;
