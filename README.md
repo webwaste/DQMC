@@ -3,8 +3,8 @@ This repository contains the code for DQMC.
 
 ----------------------------------------------
 To compile the code follow these steps: 
-go to 'Codes' directory 
-change the permission of the 'compiler' file by typing the command: 
+* go to 'Codes' directory 
+* change the permission of the 'compiler' file by typing the command: 
 `chmod +x compiler`
 then excute the compiler script by typing: 
 `./compiler`
