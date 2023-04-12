@@ -11,9 +11,9 @@ then excute the compiler script by typing:
 
 ----------------------------------------------
 To run the code: 
-go to 'Runs' directory.
-edit the in.dqmc.json file and save it.
-execute the code by typing: 
+* go to 'Runs' directory.
+* edit the in.dqmc.json file and save it.
+* execute the code by typing: 
 `./cdqmc in.dqmc.json`
 
 ----------------------------------------------
@@ -34,14 +34,14 @@ The in.dqmc.json file looks like this:
 }
 ```
 ----------------------------------------------
-'dim' stands for dimensions [Nx,Ny,Nz]
-'t'   is the nearest neighbour hopping amplitude
-'U'   is onsite interaction strength
-'mu'  is the chemical potential
-'filling' is the desired fractional filling of the system
-'Mlist' contains a list of number of slices of beta. Temperature  = 1/(Dtau*M)
-'Dtau'  width of the slice
-'MCsteps' Total number of Monte Carlo steps
-'Eqsteps' Number of steps to equilibriate the system
+* 'dim' stands for dimensions [Nx,Ny,Nz]
+* 't'   is the nearest neighbour hopping amplitude
+* 'U'   is onsite interaction strength
+* 'mu'  is the chemical potential
+* 'filling' is the desired fractional filling of the system
+* 'Mlist' contains a list of number of slices of beta. Temperature  = 1/(Dtau*M)
+* 'Dtau'  width of the slice
+* 'MCsteps' Total number of Monte Carlo steps
+* 'Eqsteps' Number of steps to equilibriate the system
 
 Note: while working with fixed filling, uncomment filling and comment out mu
